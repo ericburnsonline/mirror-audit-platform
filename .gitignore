@@ -1,0 +1,73 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env
+.venv
+venv/
+ENV/
+env/
+
+# Environment variables
+.env.*
+*.env
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# SQLite database files
+*.sqlite3
+*.db
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/editor files
+.vscode/
+.idea/
+
+# Python testing
+.pytest_cache/
+.coverage
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Kubernetes / local configs
+.kube/
+kubeconfig*
+*.kubeconfig
+
+# Terraform (if I ever use it)
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Docker
+*.tar
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Local data storage
+data/
+results/
+output/
+
+# Node (if I add frontend later)
+node_modules/
+
+# Secrets 
+secrets/
+*.key
+*.pem
