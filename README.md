@@ -129,6 +129,17 @@ The system is designed to:
 
 ## Roadmap
 
+### Project Phases
+
+- [Phase 01 – Host Foundation](docs/phases/01-host-foundation.md) Completed
+- [Phase 02 – Virtualization Layer](docs/phases/02-virtualization.md) In Progress
+- [Phase 03 – VM Cluster Nodes](docs/phases/03-vm-cluster-nodes.md) Planned
+- [Phase 04 – Kubernetes Cluster](docs/phases/04-kubernetes-cluster.md) Planned
+- [Phase 05 – Mirror Worker System](docs/phases/05-mirror-worker.md) Planned
+- [Phase 06 – Data Storage](docs/phases/06-result-storage.md) Planned
+- [Phase 07 – Dashboard](docs/phases/07-dashboard.md) Planned
+- [Phase 08 – Performance Tuning](docs/phases/08-performance.md) Planned
+
 ### Phase 1
 
 * Base system setup (Ubuntu + RAID)
