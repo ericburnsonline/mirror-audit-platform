@@ -239,4 +239,153 @@ inet 192.168.1.200/24
 - Network is functional
 - Host is ready for virtualization setup
 
+---
+
+
+## Lessons Learned / Issues Encountered
+
+### Virtualization Not Enabled by Default
+
+Initial attempt to use KVM failed with:
+- "CPU does not support KVM extensions"
+
+Root cause:
+- AMD SVM (Secure Virtual Machine) disabled in BIOS
+
+Fix:
+- Enabled "Secure Virtual Machine Mode" in BIOS
+
+Verification:
+
+```bash
+sudo kvm-ok
+```
+
+Result:
+- "KVM acceleration can be used"
+
+---
+
+### GPU Causing Installer Boot Issues
+
+System initially stalled at a blinking cursor after GRUB selection.
+
+Root cause:
+- Dual NVIDIA GTX 980 cards interfered with kernel display initialization
+
+Fix:
+- Removed GPUs during installation
+- Alternative workaround: boot with `nomodeset`
+
+Result:
+- Installer proceeded normally
+
+---
+
+### RAID10 and Boot Partition Confusion
+
+Attempting to create RAID10 while also adding boot partitions caused conflicts in the installer UI.
+
+Issue:
+- Disks with existing partitions cannot be used as whole RAID members
+- Installer does not clearly explain required boot partition layout
+
+Resolution:
+- Created RAID10 for root filesystem
+- Used a single disk for bootloader installation
+
+Tradeoff:
+- Simplifies setup
+- Boot not fully redundant across disks
+
+Future improvement:
+- Add small BIOS boot partition on each disk
+- Install GRUB on all disks
+
+---
+
+### GPT PMBR Size Mismatch Warning
+
+Observed message during boot:
+- "GPT PMBR size mismatch"
+
+Cause:
+- Residual partition metadata from previous disk usage
+
+Impact:
+- Non-blocking warning
+- Did not affect installation
+
+Resolution:
+- Ignored during install
+- Can be cleaned later using tools like `wipefs` or `sgdisk` if needed
+
+---
+
+### KVM Permissions Require Group Membership
+
+KVM initially required sudo to run checks.
+
+Resolution:
+
+```bash
+sudo usermod -aG libvirt $USER
+sudo usermod -aG kvm $USER
+```
+
+- Logged out and back in
+
+Result:
+- `kvm-ok` works without sudo
+
+---
+
+### Libvirt Cannot Access Disk Images in Home Directory
+
+Error:
+- "Permission denied" when creating VM
+
+Cause:
+- libvirt runs under a different user and cannot access files in `/home/burns`
+
+Resolution:
+- Moved VM disk images to `/var/lib/libvirt/images/`
+- Set appropriate ownership and permissions
+
+Result:
+- VM creation succeeds
+
+---
+
+### BIOS Configuration Notes
+
+Relevant BIOS settings reviewed:
+
+Enabled:
+- Secure Virtual Machine Mode (required for KVM)
+- ACPI SRAT Table (NUMA support)
+
+Left at default:
+- Microcode Updation
+- PowerNow
+- C1E Support
+
+Checked:
+- Core Leveling Mode (ensured all cores available)
+
+Conclusion:
+- Minimal BIOS changes required beyond enabling virtualization
+
+---
+
+## Phase 01 Summary
+
+Key outcomes:
+- RAID10 storage configured and verified
+- Host system validated (CPU, RAM, networking)
+- Hardware virtualization enabled
+- KVM/libvirt environment functional
+
+Key lesson:
+- BIOS configuration and hardware quirks can be a larger source of issues than OS-level setup
 END
