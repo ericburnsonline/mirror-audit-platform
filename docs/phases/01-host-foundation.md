@@ -12,6 +12,7 @@ Set up the base Ubuntu host with RAID10 storage and networking.
 ## Decisions
 - Ubuntu Server LTS
 - Software RAID10 via mdadm
+  - I should have created a 1-2MB BIOS partion on each physical disk before creating md0 components
 - KVM planned for VM-based Kubernetes nodes
 
 ## Verification Commands
