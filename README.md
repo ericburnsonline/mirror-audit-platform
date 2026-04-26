@@ -4,6 +4,11 @@ A distributed system for auditing Linux distribution mirrors for consistency usi
 
 This project validates file integrity across public mirrors by distributing checksum and metadata verification workloads across a cluster. It is designed as a real-world system that balances performance, fairness to external services, and scalable architecture.
 
+## Build Notes
+
+This repository is not intended to be a universal Kubernetes installation guide.  
+Instead, the `docs/phases/` directory documents the environment, design decisions, validation commands, and lessons learned while building this platform.
+
 ## Overview
 
 Linux distributions are hosted across many public mirrors. While rare, inconsistencies can occur due to sync delays, partial updates, or corruption.
