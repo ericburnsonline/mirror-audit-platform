@@ -2,14 +2,17 @@ from fastapi import FastAPI
 import psycopg2
 import redis
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(title="Mirror Audit Coordinator")
 
-DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "mirror_audit")
-DB_USER = os.getenv("DB_USER", "map_user")
-DB_PASS = os.getenv("DB_PASS", "map_password")
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASS = os.getenv("DB_PASS")
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = os.getenv("REDIS_PORT", "6379")
@@ -24,7 +27,6 @@ def root():
 def health():
     results = {}
 
-    # Check Postgres
     try:
         conn = psycopg2.connect(
             host=DB_HOST, port=DB_PORT,
@@ -35,7 +37,6 @@ def health():
     except Exception as e:
         results["postgres"] = f"error: {e}"
 
-    # Check Redis
     try:
         r = redis.Redis(host=REDIS_HOST, port=int(REDIS_PORT))
         r.ping()
