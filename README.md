@@ -1,5 +1,26 @@
 # Mirror Audit Platform
 
+## Origin
+
+This project began with advice from a Linux instructor teaching from Slackware 
+years ago: when downloading software, get the source from one mirror and verify 
+the checksum from a completely different, independent source.
+
+The reasoning was practical — if a mirror is compromised, an attacker will likely 
+replace both the file and the checksum on that same server. But the odds of them 
+having also compromised a separate, unrelated source are much lower. Independent 
+verification across sources is meaningfully stronger than single-source verification.
+
+That principle — split-source verification — is the foundation of this project. 
+Rather than trusting any single mirror, this system compares file metadata and 
+checksums across many independent mirrors to detect inconsistencies that single-source 
+checks would miss.
+
+This repository is a working journal, not a polished guide. It documents real 
+decisions, real mistakes, and real lessons learned while building a production-style 
+distributed system. AI tools are used throughout to accelerate the work.
+
+
 A distributed system for auditing Linux distribution mirrors for consistency using Kubernetes.
 
 This project validates file integrity across public mirrors by distributing checksum and metadata verification workloads across a cluster. It is designed as a real-world system that balances performance, fairness to external services, and scalable architecture.
