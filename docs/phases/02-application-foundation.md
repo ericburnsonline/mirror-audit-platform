@@ -105,14 +105,31 @@ high-value results immediately.
 
 ## Verification Commands
 
+Start Docker containers:
+```bash
+docker compose -f infrastructure/docker-compose/docker-compose.yml --env-file .env up -d
+```
+
 Check running containers:
 ```bash
 docker ps
 ```
 
-Health check:
+Start the coordinator service:
 ```bash
-curl http://127.0.0.1:8000/health
+uvicorn coordinator.main:app --reload
+```
+
+Verify coordinator endpoints:
+```bash
+# In browser or curl:
+http://127.0.0.1:8000/
+http://127.0.0.1:8000/health
+```
+
+Initialize the database:
+```bash
+python -m coordinator.db
 ```
 
 Run mirror discovery:
@@ -124,6 +141,16 @@ Query mirror inventory:
 ```bash
 docker exec -it map_postgres psql -U map_auditor -d mirror_audit \
   -c "SELECT protocol, count(*) FROM mirrors GROUP BY protocol ORDER BY protocol;"
+```
+
+Run mirror audit:
+```bash
+python -m worker.fetch
+```
+
+Run offline analysis:
+```bash
+python -m worker.analyze
 ```
 
 ## Lessons Learned
