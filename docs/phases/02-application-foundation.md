@@ -153,6 +153,15 @@ Run offline analysis:
 python -m worker.analyze
 ```
 
+Shut down containers (preserves data):
+```bash
+docker compose -f infrastructure/docker-compose/docker-compose.yml --env-file .env down
+```
+
+Shut down and wipe all data:
+```bash
+docker compose -f infrastructure/docker-compose/docker-compose.yml --env-file .env down -v
+```
 
 ## Lessons Learned
 
