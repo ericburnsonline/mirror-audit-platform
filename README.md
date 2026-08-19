@@ -1,215 +1,413 @@
 # Mirror Audit Platform
 
-## Origin
+A Linux mirror consistency and integrity auditing platform being built around Kubernetes.
 
-This project began with advice from a Linux instructor teaching from Slackware 
-years ago: when downloading software, get the source from one mirror and verify 
-the checksum from a completely different, independent source.
+Mirror Audit Platform collects checksum information from independent Linux distribution mirrors, compares the results, records discrepancies, and ultimately will publish historical mirror consistency data through a public dashboard.
 
-The reasoning was practical — if a mirror is compromised, an attacker will likely 
-replace both the file and the checksum on that same server. But the odds of them 
-having also compromised a separate, unrelated source are much lower. Independent 
-verification across sources is meaningfully stronger than single-source verification.
+Slackware is the first supported distribution.
 
-That principle — split-source verification — is the foundation of this project. 
-Rather than trusting any single mirror, this system compares file metadata and 
-checksums across many independent mirrors to detect inconsistencies that single-source 
-checks would miss.
+## Why This Project Exists
 
-This repository is a working journal, not a polished guide. It documents real 
-decisions, real mistakes, and real lessons learned while building a production-style 
-distributed system. AI tools are used throughout to accelerate the work.
+Years ago, a Linux instructor gave me a piece of advice that stuck with me:
 
+When downloading software from a mirror, obtain the software from one source and verify its checksum using a different, independent source.
 
-A distributed system for auditing Linux distribution mirrors for consistency using Kubernetes.
+The reasoning is straightforward. If a server is compromised, an attacker may be able to replace both a file and the checksum stored beside it. Compromising multiple independent sources is a substantially different problem.
 
-This project validates file integrity across public mirrors by distributing checksum and metadata verification workloads across a cluster. It is designed as a real-world system that balances performance, fairness to external services, and scalable architecture.
+That idea of **split-source verification** is the starting point for this project.
 
-## Build Notes
+Linux distributions commonly make releases available through many independently operated mirrors. Mirror Audit Platform is intended to periodically compare integrity information across those mirrors and identify differences worth investigating.
 
-This repository is not intended to be a universal Kubernetes installation guide.  
-Instead, the `docs/phases/` directory documents the environment, design decisions, validation commands, and lessons learned while building this platform.
+A discrepancy does **not** automatically indicate compromise. Legitimate explanations can include synchronization delays, stale mirrors, incomplete content, configuration differences, or network problems. The purpose of the system is to identify and preserve those differences so they can be analyzed.
 
-## Overview
+## Project Goals
 
-Linux distributions are hosted across many public mirrors. While rare, inconsistencies can occur due to sync delays, partial updates, or corruption.
+The long-term system is intended to:
 
-This system periodically audits mirrors by:
+* Maintain an inventory of mirrors for supported Linux distributions
+* Periodically retrieve published checksum information
+* Compare checksum manifests and individual checksum entries across sources
+* Identify missing, stale, unreachable, or inconsistent mirrors
+* Preserve historical audit results
+* Distribute mirror checks across multiple Kubernetes workers
+* Control concurrency and request rates to avoid abusing public mirror infrastructure
+* Adapt worker concurrency to available resources and workload
+* Publish audit coverage and consistency results through a lightweight public dashboard
+* Provide measurable data for performance and scalability experiments
 
-* Fetching file metadata (size, checksums)
-* Comparing results across mirrors
-* Identifying inconsistencies or anomalies
-* Publishing results through a public dashboard
+The project also serves as a hands-on environment for learning and operating Kubernetes using a workload that has a real purpose beyond demonstrating Kubernetes itself.
 
-The goal is not to mirror data, but to **verify integrity across distributed sources**.
+## Current Status
 
-## Key Features
+**Active development**
 
-* Distributed validation using Kubernetes workers
-* Parallel checksum and metadata collection
-* Mirror-aware request distribution to avoid overloading sources
-* Batch execution model (periodic audits rather than constant crawling)
-* Centralized result collection and comparison
-* Extensible to multiple Linux distributions
+The project currently has two completed foundation phases.
+
+### Host Foundation
+
+A dedicated physical server has been prepared as the eventual Kubernetes host:
+
+* Ubuntu Server 24.04 LTS
+* 2 x AMD Opteron 6128 processors
+* 16 physical CPU cores
+* 160 GB RAM
+* Four-SSD Linux software RAID10
+* Approximately 929 GB RAID capacity
+* KVM/libvirt hardware virtualization enabled and verified
+
+The next infrastructure milestone is to create reproducible virtual machines for Kubernetes control-plane and worker nodes.
+
+### Application Foundation
+
+Before introducing Kubernetes, the initial application components were developed locally so application problems could be separated from cluster problems.
+
+The current prototype includes:
+
+* FastAPI coordinator service
+* PostgreSQL mirror inventory
+* Redis service available for the future work queue
+* Slackware mirror discovery
+* Slackware `CHECKSUMS.md5` retrieval
+* Checksum parsing and comparison
+* Local preservation of retrieved checksum manifests
+* Offline comparison and anomaly reporting
+
+The initial Slackware discovery run parsed 249 mirror entries and inserted 247 unique mirrors into PostgreSQL.
+
+Redis connectivity is currently validated by the coordinator, but the audit workers have **not yet been converted to Redis-backed distributed workers**.
+
+## Current Audit Scope
+
+The first audit target is:
+
+```text
+slackware64-15.0/CHECKSUMS.md5
+```
+
+The current prototype:
+
+1. Retrieves the authoritative Slackware checksum manifest.
+2. Loads active HTTPS mirrors from the database.
+3. Retrieves the corresponding `CHECKSUMS.md5` from each reachable mirror.
+4. Validates that the response resembles a checksum file rather than an HTML error page.
+5. Parses individual filename/checksum entries.
+6. Compares mirror entries against the authoritative manifest.
+7. Separates results into matching, mismatching, missing, invalid, and unreachable categories.
+8. Saves retrieved manifests for later offline analysis.
+
+The current worker is sequential. Distributing this workload across Kubernetes workers is a later phase of the project.
+
+## Audit Strategy
+
+Audit coverage is intentionally being expanded in stages.
+
+### Stage A - Checksum Manifest Comparison
+
+Compare the Slackware 15.0 64-bit `CHECKSUMS.md5` manifest across mirrors.
+
+This is inexpensive for both the auditing system and the public mirrors because it requires retrieving one relatively small file from each source.
+
+### Stage B - Broader Distribution Coverage
+
+Expand checksum comparison across additional Slackware versions and architectures.
+
+### Stage C - File Verification
+
+Retrieve selected files and independently calculate their checksums to verify that actual mirror content agrees with published checksum data.
+
+### Later - Cross-Source Analysis
+
+Expand the analysis beyond a single authoritative comparison to examine agreement and disagreement among multiple independent mirrors and historical audit runs.
+
+This is closer to the split-source verification principle that originally motivated the project.
 
 ## Architecture
 
-The system is composed of several logical components:
+The project is being built incrementally. The current application prototype and the target distributed architecture are deliberately separated below.
 
-### Coordinator
+### Current Prototype
 
-Maintains the list of:
+```text
+Slackware Mirror List
+        |
+        v
+Mirror Discovery
+        |
+        v
+   PostgreSQL
+        |
+        v
+ Sequential Fetch Worker
+        |
+        +----> Authoritative CHECKSUMS.md5
+        |
+        +----> Mirror CHECKSUMS.md5 files
+        |
+        v
+ Local Checksum Data
+        |
+        v
+ Offline Analysis
+```
 
-* Mirrors
-* Distribution paths (starting with Slackware)
+FastAPI provides coordinator and health endpoints. PostgreSQL stores the current mirror inventory. Redis is running and health-checked but is not yet performing workload distribution.
 
-Distributes work to worker nodes.
+### Target Architecture
 
-### Workers
+```text
+                  +----------------------+
+                  |     Coordinator      |
+                  +----------+-----------+
+                             |
+                             v
+                     +---------------+
+                     |   Work Queue  |
+                     +-------+-------+
+                             |
+             +---------------+---------------+
+             |               |               |
+             v               v               v
+        +---------+      +---------+      +---------+
+        | Worker  |      | Worker  |      | Worker  |
+        |   Pod   |      |   Pod   |      |   Pod   |
+        +----+----+      +----+----+      +----+----+
+             |                |                |
+             +----------------+----------------+
+                              |
+                              v
+                       Linux Mirrors
+                              |
+                              v
+                       +--------------+
+                       | Result Store |
+                       +------+-------+
+                              |
+                              v
+                         Analysis
+                              |
+                              v
+                    Public Status Site
+```
 
-Kubernetes-managed workloads that:
+Kubernetes will eventually orchestrate the audit workers and supporting application components.
 
-* Retrieve file metadata from assigned mirrors
-* Calculate or validate checksums
-* Return structured results
+## Why Kubernetes?
 
-### Result Store
+Kubernetes is not required to retrieve a checksum file from a mirror. The initial prototype intentionally proves that.
 
-Central storage for:
+The value of Kubernetes becomes more relevant as the system expands to:
 
-* Crawl results
-* Historical runs
-* Comparison data
+* Hundreds or thousands of independent audit tasks
+* Multiple Linux distributions and releases
+* Worker isolation
+* Resource requests and limits
+* Controlled parallelism
+* Scheduled batch workloads
+* Worker failure and retry handling
+* Horizontal scaling
+* Application health monitoring
+* Reproducible deployment
+* Performance experiments involving different worker counts and resource allocations
 
-### Analysis Layer
+Using a meaningful batch workload makes it possible to explore these capabilities while measuring whether additional complexity actually provides useful benefits.
 
-Processes collected data to:
+## Fair Use
 
-* Compare mirrors
-* Detect inconsistencies
-* Flag anomalies
+Public Linux mirrors are shared infrastructure. Avoiding unnecessary load is a core design requirement.
 
-### Public Dashboard
+The distributed implementation is expected to include:
 
-A lightweight, separate system that:
+* Per-mirror request limits
+* Controlled worker concurrency
+* Request scheduling
+* Mirror-aware workload distribution
+* Retry backoff
+* Timeouts
+* Periodic batch operation instead of continuous crawling
 
-* Displays audit results
-* Shows crawl history
-* Highlights inconsistencies
+The goal is to gather useful integrity information without behaving like an aggressive crawler.
 
-## Infrastructure
+## Infrastructure Strategy
 
-### Host System
+### Physical Host
 
-* Ubuntu Server (LTS)
-* RAID 10 SSD storage for performance
-* High-core-count system for parallel workloads
+The Kubernetes lab runs on older server hardware rather than a cloud environment.
 
-### Cluster Design
+That is intentional.
 
-* Multi-node Kubernetes cluster (VM-based)
-* Separate control plane and worker nodes
-* Designed to simulate production-style environments
+The server provides enough CPU and memory for a multi-node virtualized cluster while also creating useful constraints for performance analysis.
 
-### Storage Strategy
+The current host has:
 
-* SSD RAID 10 for active workloads and cluster performance
-* Optional secondary storage (HDD) for archival data and backups
+| Resource             | Configuration           |
+| -------------------- | ----------------------- |
+| CPUs                 | 2 x AMD Opteron 6128    |
+| Physical cores       | 16                      |
+| RAM                  | 160 GB                  |
+| Primary storage      | 4 x SSD                 |
+| RAID                 | Linux software RAID10   |
+| Usable RAID capacity | ~929 GB                 |
+| Host OS              | Ubuntu Server 24.04 LTS |
+| Virtualization       | KVM/libvirt             |
 
-## Design Considerations
+The CPUs can also be upgraded inexpensively, creating an opportunity to establish a baseline, change the hardware, and compare workload performance under otherwise similar conditions.
 
-### Fair Usage
+### Virtual Machines
 
-The system avoids overloading mirrors by:
+The Kubernetes cluster will run on KVM virtual machines rather than directly on the physical host.
 
-* Randomizing request distribution
-* Controlling concurrency
+The planned topology includes:
 
-### Batch Processing
+* Dedicated control-plane VM
+* Multiple worker VMs
+* Explicit CPU, memory, and disk allocations
+* Reproducible node definitions
 
-Audits run periodically rather than continuously to:
+This keeps the physical host separate from the Kubernetes nodes and makes rebuilding or experimenting with cluster configurations considerably easier.
 
-* Reduce unnecessary load
-* Improve efficiency
-* Align with real-world usage patterns
+### Storage
 
-### Scalability
+SSD RAID10 is used for the active system, VM disks, and working data.
 
-Workloads scale horizontally via Kubernetes:
+Large spinning disks may later be added as a separate storage tier for:
 
-* Additional workers increase throughput
-* System can adapt to available resources
+* Historical results
+* Database backups
+* VM backups
+* Archived audit data
 
-### Performance Optimization
+They are not required for the initial implementation.
 
-The system is designed to:
+## Performance and Adaptive Scaling
 
-* Maximize parallelism across CPU cores
-* Balance network and I/O workloads
-* Support future benchmarking and tuning
+One of the later goals is to determine how much parallelism this workload can use effectively.
 
-## Roadmap
+Potential measurements include:
 
-## Roadmap
+* Audit completion time
+* Checks per second
+* CPU utilization
+* Memory utilization
+* Network throughput
+* Storage I/O
+* Worker queue depth
+* Worker failure rate
+* Mirror response latency
 
-### Project Phases
+Rather than simply configuring an arbitrarily large number of workers, the eventual system may adjust concurrency according to workload and host conditions.
 
-- [Phase 01 – Host Foundation](docs/phases/01-host-foundation.md) Completed
-- [Phase 02 – Application Foundation](docs/phases/02-application-foundation.md) Completed
-- [Phase 03 – Virtualization Layer](docs/phases/03-virtualization.md) In Progress
-- [Phase 04 – VM Cluster Nodes](docs/phases/04-vm-cluster-nodes.md) Planned
-- [Phase 05 – Kubernetes Cluster](docs/phases/05-kubernetes-cluster.md) Planned
-- [Phase 06 – Mirror Worker System](docs/phases/06-mirror-worker.md) Planned
-- [Phase 07 – Data Storage](docs/phases/07-result-storage.md) Planned
-- [Phase 08 – Dashboard](docs/phases/08-dashboard.md) Planned
-- [Phase 09 – Performance Tuning](docs/phases/09-performance.md) Planned
+Because the physical host supports inexpensive CPU upgrades, the same audit workload can also be used for before-and-after hardware comparisons.
 
-### Phase 1
+## Project Phases
 
-* Base system setup (Ubuntu + RAID)
-* Kubernetes cluster deployment
+The phase documents are a **build journal**, not a generic Kubernetes installation guide.
 
-### Phase 2
+They record:
 
-* Basic worker jobs (single file validation)
-* Parallel job execution
+* What was being built
+* Important design decisions
+* Commands used to validate the environment
+* Expected results
+* Problems encountered
+* Troubleshooting
+* Lessons learned
 
-### Phase 3
+### Completed
 
-* Mirror list ingestion
-* Distributed crawl execution
+* [Phase 01 - Host Foundation](docs/phases/01-host-foundation.md)
+* [Phase 02 - Application Foundation](docs/phases/02-application-foundation.md)
 
-### Phase 4
+### In Progress
 
-* Result storage and comparison logic
+**Phase 03 - Virtualization Layer**
 
-### Phase 5
+Create and validate the KVM/libvirt VM environment that will host the Kubernetes nodes.
 
-* Public dashboard
+A Phase 03 document will be added as the work progresses.
 
-### Phase 6
+### Planned
 
-* Adaptive scaling and performance tuning
+* **Phase 04 - VM Cluster Nodes** - Define and create the control-plane and worker VMs.
+* **Phase 05 - Kubernetes Cluster** - Build and validate the multi-node Kubernetes environment.
+* **Phase 06 - Distributed Mirror Workers** - Move audit work into Kubernetes-managed workers and introduce queue-based dispatch.
+* **Phase 07 - Result Storage and Analysis** - Persist audit runs and structured results for historical comparison.
+* **Phase 08 - Public Dashboard** - Publish audit coverage, dates, status, and consistency information.
+* **Phase 09 - Performance Tuning** - Measure scaling behavior and experiment with adaptive concurrency and hardware changes.
 
-## Future Enhancements
+Links will be added as each phase document is created.
 
-* Support for additional distributions beyond Slackware
-* Advanced anomaly detection
-* Storage tiering (SSD vs archival storage)
-* Performance benchmarking across hardware configurations
-* Automated scheduling and reporting
+## Repository Layout
 
-## Why This Project
+```text
+mirror-audit-platform/
+├── coordinator/
+│   ├── db.py
+│   └── main.py
+├── dashboard/
+├── docs/
+│   └── phases/
+│       ├── 01-host-foundation.md
+│       └── 02-application-foundation.md
+├── infrastructure/
+│   └── docker-compose/
+│       └── docker-compose.yml
+├── tests/
+├── worker/
+│   ├── analyze.py
+│   ├── discovery.py
+│   └── fetch.py
+├── .gitignore
+├── LICENSE
+├── README.md
+└── requirements.txt
+```
 
-This project is designed to explore:
+`dashboard/` and `tests/` currently contain placeholders for later development.
 
-* Distributed systems design
-* Kubernetes-based workload orchestration
-* Real-world performance and scaling considerations
-* Data integrity validation across decentralized infrastructure
+## Development Approach
 
-It is intentionally built as a **production-style system**, not a toy example.
+This repository intentionally preserves some of the path taken to build the system instead of presenting a fictional perfect implementation.
+
+Examples already documented include:
+
+* RAID10 boot-layout tradeoffs
+* BIOS virtualization configuration
+* KVM validation
+* Libvirt permissions
+* Docker Compose environment handling on Windows
+* Incorrect assumptions about the Slackware mirror-list HTML structure
+
+The intent is to document not only **what worked**, but also **why decisions were made and what was learned when assumptions were wrong**.
+
+AI tools are being used to assist with design, research, development, troubleshooting, and documentation. Generated suggestions are tested against the actual environment rather than treated as authoritative.
+
+## Near-Term Work
+
+The immediate priorities are:
+
+1. Complete the first KVM virtual machine and establish a repeatable VM creation process.
+2. Build the VM topology for the Kubernetes cluster.
+3. Bring up and validate the Kubernetes cluster.
+4. Convert the current sequential audit prototype into distributed workers.
+5. Introduce Redis-backed work dispatch and structured audit-result persistence.
+
+## Future Directions
+
+Potential later work includes:
+
+* Additional Linux distributions
+* SHA-256 and other checksum formats
+* Historical mirror health and consistency trends
+* Mirror synchronization analysis
+* Retry and failure classification
+* Kubernetes autoscaling experiments
+* Metrics and observability
+* Automated scheduling
+* Cold-storage archival
+* Public API access
+* Hardware performance comparisons
+* Adaptive concurrency
 
 ## License
 
-Licensed under MIT for simplicity and ease of reuse.
+This project is licensed under the MIT License for simplicity and ease of reuse.
